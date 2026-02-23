@@ -409,7 +409,8 @@ export default function planExtension(pi: ExtensionAPI): void {
 
 		const choice = await ctx.ui.select("Plan mode: next action", [
 			"Approve and execute now",
-			"Keep planning (read-only)",
+			"Continue from proposed plan",
+			"Regenerate plan",
 			"Exit plan mode",
 		]);
 
@@ -428,21 +429,16 @@ export default function planExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		if (choice === "Keep planning (read-only)") {
-			const keepPlanningChoice = await ctx.ui.select("Keep planning mode", [
-				"Continue from proposed plan",
-				"Regenerate plan",
-			]);
+		if (choice === "Regenerate plan") {
+			todoItems = [];
+			setStatus(ctx);
+			pi.sendUserMessage(
+				"Regenerate the full plan from scratch. Re-check context and provide a refreshed Plan: section.",
+			);
+			return;
+		}
 
-			if (keepPlanningChoice === "Regenerate plan") {
-				todoItems = [];
-				setStatus(ctx);
-				pi.sendUserMessage(
-					"Regenerate the full plan from scratch. Re-check context and provide a refreshed Plan: section.",
-				);
-				return;
-			}
-
+		if (choice === "Continue from proposed plan") {
 			const firstOpenStep = todoItems.find((item) => !item.completed);
 			if (firstOpenStep) {
 				pi.sendUserMessage(

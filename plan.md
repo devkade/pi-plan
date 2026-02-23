@@ -9,9 +9,9 @@ Extend `pi-plan` from basic read-only planning into a lightweight execution comp
 ## Added Capabilities
 
 - `/todos` reports current plan step completion (`[DONE:n]` markers).
-- `Keep planning (read-only)` now branches into:
-  - `Regenerate plan` (fresh plan output)
+- Plan-mode next action menu includes:
   - `Continue from proposed plan` (iterative refinement)
+  - `Regenerate plan` (fresh plan output)
 
 ## Out of Scope (moved outside `pi-plan` package)
 

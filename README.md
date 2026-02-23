@@ -40,7 +40,7 @@ pi install npm:@devkade/pi-plan
 ```bash
 pi install git:github.com/devkade/pi-plan@main
 # or pin a tag
-pi install git:github.com/devkade/pi-plan@v0.2.0
+pi install git:github.com/devkade/pi-plan@v0.2.1
 ```
 
 ### Local development run
@@ -78,7 +78,8 @@ This enables plan mode (if needed) and immediately sends the task.
 After each response in UI mode, you’ll get:
 
 - **Approve and execute now**
-- **Keep planning (read-only)**
+- **Continue from proposed plan**
+- **Regenerate plan**
 - **Exit plan mode**
 
 Choosing **Approve and execute now** automatically:
@@ -138,9 +139,9 @@ In plan mode, the system prompt enforces this structure:
 - `/plan status` — show current status
 - `/plan <task>` — enable mode if needed and start planning for `<task>`
 - `/todos` — show tracked plan progress (`✓`/`○`) from extracted `Plan:` steps and `[DONE:n]` markers
-- after each planning turn, `Keep planning (read-only)` now offers:
-  - `Regenerate plan`
+- after each planning turn, the plan-mode action menu includes:
   - `Continue from proposed plan`
+  - `Regenerate plan`
 
 ## Development
 

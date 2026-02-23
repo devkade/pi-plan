@@ -1,6 +1,6 @@
 {
   "name": "@devkade/pi-plan",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Plan command extension for Pi: read-only planning mode with approval-based execution",
   "repository": {
     "type": "git",
