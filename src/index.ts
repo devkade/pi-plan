@@ -1,7 +1,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { isSafeReadOnlyCommand, normalizeArg } from "./utils";
+import {
+	extractTodoItems,
+	isSafeReadOnlyCommand,
+	markCompletedSteps,
+	normalizeArg,
+	type TodoItem,
+} from "./utils";
 
 const STATUS_KEY = "pi-plan";
+const TODO_WIDGET_KEY = "pi-plan-todos";
 
 const PLAN_TOOL_CANDIDATES = [
 	"read",
@@ -79,9 +86,41 @@ function notify(
 	});
 }
 
+function getAssistantTextFromMessage(message: unknown): string {
+	const candidate = message as {
+		role?: unknown;
+		content?: unknown;
+	};
+
+	if (candidate.role !== "assistant") {
+		return "";
+	}
+
+	if (typeof candidate.content === "string") {
+		return candidate.content;
+	}
+
+	if (!Array.isArray(candidate.content)) {
+		return "";
+	}
+
+	return candidate.content
+		.filter(
+			(block): block is { type?: string; text?: string } =>
+				typeof block === "object" &&
+				block !== null &&
+				(block as { type?: string }).type === "text" &&
+				typeof (block as { text?: string }).text === "string",
+		)
+		.map((block) => block.text ?? "")
+		.join("\n");
+}
+
 export default function planExtension(pi: ExtensionAPI): void {
 	let planModeEnabled = false;
+	let executionMode = false;
 	let restoreTools: string[] | null = null;
+	let todoItems: TodoItem[] = [];
 
 	const getAllToolNames = (): string[] => pi.getAllTools().map((tool) => tool.name);
 
@@ -96,12 +135,60 @@ export default function planExtension(pi: ExtensionAPI): void {
 		return [...new Set(fallback)];
 	};
 
+	const restoreNormalTools = (): void => {
+		const toolsToRestore =
+			restoreTools && restoreTools.length > 0
+				? [...restoreTools]
+				: [...getAllToolNames()];
+		if (toolsToRestore.length > 0) {
+			pi.setActiveTools(toolsToRestore);
+		}
+		restoreTools = null;
+	};
+
+	const updateTodoWidget = (ctx: ExtensionContext): void => {
+		if (!ctx.hasUI) {
+			return;
+		}
+
+		if (!executionMode || todoItems.length === 0) {
+			ctx.ui.setWidget(TODO_WIDGET_KEY, undefined);
+			return;
+		}
+
+		const lines = todoItems.map((item) => {
+			if (item.completed) {
+				return (
+					ctx.ui.theme.fg("success", "☑ ") +
+					ctx.ui.theme.fg("muted", ctx.ui.theme.strikethrough(item.text))
+				);
+			}
+			return `${ctx.ui.theme.fg("muted", "☐ ")}${item.text}`;
+		});
+
+		ctx.ui.setWidget(TODO_WIDGET_KEY, lines);
+	};
+
 	const setStatus = (ctx: ExtensionContext): void => {
-		if (!ctx.hasUI) return;
+		if (!ctx.hasUI) {
+			return;
+		}
+
+		if (executionMode && todoItems.length > 0) {
+			const completed = todoItems.filter((item) => item.completed).length;
+			ctx.ui.setStatus(
+				STATUS_KEY,
+				ctx.ui.theme.fg("accent", `📋 ${completed}/${todoItems.length}`),
+			);
+			updateTodoWidget(ctx);
+			return;
+		}
+
 		ctx.ui.setStatus(
 			STATUS_KEY,
 			planModeEnabled ? ctx.ui.theme.fg("warning", "⏸ plan") : undefined,
 		);
+		updateTodoWidget(ctx);
 	};
 
 	const enterPlanMode = (ctx: ExtensionContext): void => {
@@ -119,28 +206,37 @@ export default function planExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
+		todoItems = [];
+		executionMode = false;
 		pi.setActiveTools(planTools);
 		planModeEnabled = true;
 		setStatus(ctx);
 		notify(pi, ctx, `Plan mode enabled (read-only): ${planTools.join(", ")}`);
 	};
 
-	const exitPlanMode = (ctx: ExtensionContext, reason?: string): void => {
+	const exitPlanMode = (
+		ctx: ExtensionContext,
+		reason?: string,
+		options: { resetProgress?: boolean } = {},
+	): void => {
 		if (!planModeEnabled) {
 			if (reason) {
 				notify(pi, ctx, reason);
+			}
+			if (options.resetProgress) {
+				executionMode = false;
+				todoItems = [];
+				setStatus(ctx);
 			}
 			return;
 		}
 
 		planModeEnabled = false;
-		const toolsToRestore =
-			restoreTools && restoreTools.length > 0 ? [...restoreTools] : [...getAllToolNames()];
-		if (toolsToRestore.length > 0) {
-			pi.setActiveTools(toolsToRestore);
+		restoreNormalTools();
+		if (options.resetProgress) {
+			executionMode = false;
+			todoItems = [];
 		}
-		restoreTools = null;
-
 		setStatus(ctx);
 		if (reason) {
 			notify(pi, ctx, reason);
@@ -155,7 +251,9 @@ export default function planExtension(pi: ExtensionAPI): void {
 
 			if (raw.length === 0) {
 				if (planModeEnabled) {
-					exitPlanMode(ctx, "Plan mode disabled. Back to YOLO mode.");
+					exitPlanMode(ctx, "Plan mode disabled. Back to YOLO mode.", {
+						resetProgress: true,
+					});
 				} else {
 					enterPlanMode(ctx);
 				}
@@ -169,7 +267,9 @@ export default function planExtension(pi: ExtensionAPI): void {
 			}
 
 			if (["off", "disable", "stop", "exit"].includes(command)) {
-				exitPlanMode(ctx, "Plan mode disabled. Back to YOLO mode.");
+				exitPlanMode(ctx, "Plan mode disabled. Back to YOLO mode.", {
+					resetProgress: true,
+				});
 				return;
 			}
 
@@ -177,7 +277,11 @@ export default function planExtension(pi: ExtensionAPI): void {
 				notify(
 					pi,
 					ctx,
-					planModeEnabled ? "Plan mode: ON (read-only planning)" : "Plan mode: OFF (default YOLO mode)",
+					planModeEnabled
+						? "Plan mode: ON (read-only planning)"
+						: executionMode
+							? "Plan mode: OFF (executing approved plan)"
+							: "Plan mode: OFF (default YOLO mode)",
 				);
 				return;
 			}
@@ -190,13 +294,38 @@ export default function planExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerCommand("todos", {
+		description: "Show current plan execution progress",
+		handler: async (_args, ctx) => {
+			if (todoItems.length === 0) {
+				notify(
+					pi,
+					ctx,
+					"No tracked plan steps. Create a plan in /plan mode first.",
+					"info",
+				);
+				return;
+			}
+
+			const completed = todoItems.filter((item) => item.completed).length;
+			const progress = `${completed}/${todoItems.length}`;
+			const list = todoItems
+				.map((item) => `${item.step}. ${item.completed ? "✓" : "○"} ${item.text}`)
+				.join("\n");
+			notify(pi, ctx, `Plan progress ${progress}\n${list}`, "info");
+		},
+	});
+
 	pi.on("tool_call", async (event) => {
-		if (!planModeEnabled) return;
+		if (!planModeEnabled) {
+			return;
+		}
 
 		if (WRITE_LIKE_TOOLS.has(event.toolName)) {
 			return {
 				block: true,
-				reason: "Plan mode is read-only. Approve execution first (choose 'Approve and execute now').",
+				reason:
+					"Plan mode is read-only. Approve execution first (choose 'Approve and execute now').",
 			};
 		}
 
@@ -219,13 +348,64 @@ export default function planExtension(pi: ExtensionAPI): void {
 			};
 		}
 
+		if (executionMode && todoItems.length > 0) {
+			const remaining = todoItems
+				.filter((item) => !item.completed)
+				.map((item) => `${item.step}. ${item.text}`)
+				.join("\n");
+			const executionPrompt = remaining
+				? `[APPROVED PLAN EXECUTION]\nComplete the remaining steps in order:\n${remaining}\n\nAfter each completed step, include a [DONE:n] marker.`
+				: "[APPROVED PLAN EXECUTION]\nFinish implementation and verify results.";
+
+			return {
+				systemPrompt: `${event.systemPrompt}\n\n${YOLO_MODE_SYSTEM_PROMPT}\n\n${executionPrompt}`,
+			};
+		}
+
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${YOLO_MODE_SYSTEM_PROMPT}`,
 		};
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
-		if (!planModeEnabled || !ctx.hasUI) return;
+	pi.on("turn_end", async (event, ctx) => {
+		if (!executionMode || todoItems.length === 0) {
+			return;
+		}
+
+		const text = getAssistantTextFromMessage(event.message);
+		if (!text) {
+			return;
+		}
+
+		const completedCount = markCompletedSteps(text, todoItems);
+		if (completedCount > 0) {
+			setStatus(ctx);
+		}
+
+		if (todoItems.every((item) => item.completed)) {
+			executionMode = false;
+			setStatus(ctx);
+			notify(pi, ctx, "All tracked plan steps are complete.", "info");
+		}
+	});
+
+	pi.on("agent_end", async (event, ctx) => {
+		if (!planModeEnabled || !ctx.hasUI) {
+			return;
+		}
+
+		const lastAssistantText = [...event.messages]
+			.reverse()
+			.map(getAssistantTextFromMessage)
+			.find((text) => text.length > 0);
+
+		if (lastAssistantText) {
+			const extracted = extractTodoItems(lastAssistantText);
+			if (extracted.length > 0) {
+				todoItems = extracted;
+			}
+		}
+		setStatus(ctx);
 
 		const choice = await ctx.ui.select("Plan mode: next action", [
 			"Approve and execute now",
@@ -234,13 +414,52 @@ export default function planExtension(pi: ExtensionAPI): void {
 		]);
 
 		if (choice === "Approve and execute now") {
+			executionMode = todoItems.length > 0;
 			exitPlanMode(ctx, "Plan approved. Entering YOLO mode for execution.");
-			pi.sendUserMessage(EXECUTION_TRIGGER_PROMPT);
+
+			const firstOpenStep = todoItems.find((item) => !item.completed);
+			if (firstOpenStep) {
+				pi.sendUserMessage(
+					`${EXECUTION_TRIGGER_PROMPT} Start with step ${firstOpenStep.step}: ${firstOpenStep.text}`,
+				);
+			} else {
+				pi.sendUserMessage(EXECUTION_TRIGGER_PROMPT);
+			}
+			return;
+		}
+
+		if (choice === "Keep planning (read-only)") {
+			const keepPlanningChoice = await ctx.ui.select("Keep planning mode", [
+				"Regenerate plan",
+				"Continue from proposed plan",
+			]);
+
+			if (keepPlanningChoice === "Regenerate plan") {
+				todoItems = [];
+				setStatus(ctx);
+				pi.sendUserMessage(
+					"Regenerate the full plan from scratch. Re-check context and provide a refreshed Plan: section.",
+				);
+				return;
+			}
+
+			const firstOpenStep = todoItems.find((item) => !item.completed);
+			if (firstOpenStep) {
+				pi.sendUserMessage(
+					`Continue planning from the proposed plan. Focus on step ${firstOpenStep.step}: ${firstOpenStep.text}. Refine files, validation, and risks in read-only mode.`,
+				);
+			} else {
+				pi.sendUserMessage(
+					"Continue planning from the proposed plan and refine implementation details without regenerating the full plan.",
+				);
+			}
 			return;
 		}
 
 		if (choice === "Exit plan mode") {
-			exitPlanMode(ctx, "Exited plan mode without execution.");
+			exitPlanMode(ctx, "Exited plan mode without execution.", {
+				resetProgress: true,
+			});
 		}
 	});
 
@@ -249,8 +468,10 @@ export default function planExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		executionMode = false;
 		if (ctx.hasUI) {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
+			ctx.ui.setWidget(TODO_WIDGET_KEY, undefined);
 		}
 	});
 }

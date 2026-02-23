@@ -1,6 +1,6 @@
 {
   "name": "@devkade/pi-plan",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Plan command extension for Pi: read-only planning mode with approval-based execution",
   "repository": {
     "type": "git",
@@ -25,14 +25,16 @@
   },
   "files": [
     "src",
+    "plan.md",
     "README.md"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "test": "echo 'no tests yet'",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck"
+    "check": "npm run typecheck && npm run test"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"

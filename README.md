@@ -1,9 +1,10 @@
 # Pi Plan Extension (`@devkade/pi-plan`)
 
-An extension for the [Pi coding agent](https://github.com/badlogic/pi-mono/) that adds an opt-in `/plan` mode:
+An extension for the [Pi coding agent](https://github.com/badlogic/pi-mono/) that adds planning and execution-assist commands:
 
 - **Default mode:** execute directly (YOLO)
 - **Plan mode:** read-only investigation + concrete execution plan
+- **/todos:** check current tracked plan progress
 - **Execution starts only after approval** from the plan-mode UI prompt
 
 ```txt
@@ -39,7 +40,7 @@ pi install npm:@devkade/pi-plan
 ```bash
 pi install git:github.com/devkade/pi-plan@main
 # or pin a tag
-pi install git:github.com/devkade/pi-plan@v0.1.1
+pi install git:github.com/devkade/pi-plan@v0.2.0
 ```
 
 ### Local development run
@@ -129,13 +130,17 @@ In plan mode, the system prompt enforces this structure:
 
 ## Commands
 
+### Plan workflow
+
 - `/plan` — toggle plan mode on/off
 - `/plan on` — enable plan mode
 - `/plan off` — disable plan mode
 - `/plan status` — show current status
 - `/plan <task>` — enable mode if needed and start planning for `<task>`
-
----
+- `/todos` — show tracked plan progress (`✓`/`○`) from extracted `Plan:` steps and `[DONE:n]` markers
+- after each planning turn, `Keep planning (read-only)` now offers:
+  - `Regenerate plan`
+  - `Continue from proposed plan`
 
 ## Development
 
@@ -150,8 +155,9 @@ npm run check
 
 ## Project Structure
 
-- `src/index.ts` - command handling, mode switching, approval loop, prompt injection
-- `src/utils.ts` - read-only bash allow/deny pattern checks
+- `src/index.ts` - plan mode orchestration, `/todos`, and command wiring
+- `src/utils.ts` - read-only bash checks + plan step extraction/progress helpers
+- `plan.md` - package-level feature plan notes
 - `.github/workflows/ci.yml` - CI checks
 - `.github/workflows/release.yml` - tag-triggered npm publish + GitHub Release
 
