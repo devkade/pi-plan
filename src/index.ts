@@ -430,8 +430,8 @@ export default function planExtension(pi: ExtensionAPI): void {
 
 		if (choice === "Keep planning (read-only)") {
 			const keepPlanningChoice = await ctx.ui.select("Keep planning mode", [
-				"Regenerate plan",
 				"Continue from proposed plan",
+				"Regenerate plan",
 			]);
 
 			if (keepPlanningChoice === "Regenerate plan") {
