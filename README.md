@@ -78,8 +78,8 @@ This enables plan mode (if needed) and immediately sends the task.
 After each response in UI mode, you’ll get:
 
 - **Approve and execute now**
-- **Continue from proposed plan**
-- **Regenerate plan**
+- **Continue from proposed plan** *(inline note optional; press `Tab` to add/edit. If omitted, Pi asks for modification input and waits.)*
+- **Regenerate plan** *(fresh plan from scratch, no note required)*
 - **Exit plan mode**
 
 Choosing **Approve and execute now** automatically:
@@ -140,8 +140,8 @@ In plan mode, the system prompt enforces this structure:
 - `/plan <task>` — enable mode if needed and start planning for `<task>`
 - `/todos` — show tracked plan progress (`✓`/`○`) from extracted `Plan:` steps and `[DONE:n]` markers
 - after each planning turn, the plan-mode action menu includes:
-  - `Continue from proposed plan`
-  - `Regenerate plan`
+  - `Continue from proposed plan` *(inline note optional via `Tab`; without note, Pi prompts for modification input and waits)*
+  - `Regenerate plan` *(no additional note required)*
 
 ## Development
 

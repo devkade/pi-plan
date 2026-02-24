@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { selectPlanNextActionWithInlineNote } from "./plan-action-ui";
 import {
 	extractTodoItems,
 	isSafeReadOnlyCommand,
@@ -407,14 +408,12 @@ export default function planExtension(pi: ExtensionAPI): void {
 		}
 		setStatus(ctx);
 
-		const choice = await ctx.ui.select("Plan mode: next action", [
-			"Approve and execute now",
-			"Continue from proposed plan",
-			"Regenerate plan",
-			"Exit plan mode",
-		]);
+		const selection = await selectPlanNextActionWithInlineNote(ctx.ui);
+		if (selection.cancelled || !selection.action) {
+			return;
+		}
 
-		if (choice === "Approve and execute now") {
+		if (selection.action === "approve") {
 			executionMode = todoItems.length > 0;
 			exitPlanMode(ctx, "Plan approved. Entering YOLO mode for execution.");
 
@@ -429,7 +428,7 @@ export default function planExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		if (choice === "Regenerate plan") {
+		if (selection.action === "regenerate") {
 			todoItems = [];
 			setStatus(ctx);
 			pi.sendUserMessage(
@@ -438,21 +437,32 @@ export default function planExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		if (choice === "Continue from proposed plan") {
+		if (selection.action === "continue") {
+			const continueNote = selection.continueNote?.trim() ?? "";
+			if (continueNote.length === 0) {
+				notify(
+					pi,
+					ctx,
+					"Please enter the requested modifications, then send your message to continue planning. Waiting for your input.",
+					"info",
+				);
+				return;
+			}
+
 			const firstOpenStep = todoItems.find((item) => !item.completed);
 			if (firstOpenStep) {
 				pi.sendUserMessage(
-					`Continue planning from the proposed plan. Focus on step ${firstOpenStep.step}: ${firstOpenStep.text}. Refine files, validation, and risks in read-only mode.`,
+					`Continue planning from the proposed plan. User note: ${continueNote}. Focus on step ${firstOpenStep.step}: ${firstOpenStep.text}. Refine files, validation, and risks in read-only mode.`,
 				);
 			} else {
 				pi.sendUserMessage(
-					"Continue planning from the proposed plan and refine implementation details without regenerating the full plan.",
+					`Continue planning from the proposed plan. User note: ${continueNote}. Refine implementation details without regenerating the full plan.`,
 				);
 			}
 			return;
 		}
 
-		if (choice === "Exit plan mode") {
+		if (selection.action === "exit") {
 			exitPlanMode(ctx, "Exited plan mode without execution.", {
 				resetProgress: true,
 			});
